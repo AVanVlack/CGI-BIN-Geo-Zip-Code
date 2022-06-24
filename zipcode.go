@@ -5,7 +5,6 @@ import (
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -18,23 +17,38 @@ func main() {
 	if _, err := os.Stat(country_code + ".gob"); os.IsNotExist(err) {
 		zipcodeMap, err := LoadDataset(country_code)
 		if err != nil {
-			log.Fatal(err)
+			fmt.Printf("Status: 500 Internal Server Error\n\n")
+			fmt.Print("Could not find zipcode dataset")
+			return
 		}
-		MakeGob(country_code, zipcodeMap)
+		err = MakeGob(country_code, zipcodeMap)
+		if err != nil {
+			fmt.Printf("Status: 500 Internal Server Error\n\n")
+			fmt.Print("Could not make inital dataset")
+			return
+		}
 	}
 
 	zipcodeMap, err := LoadGob(country_code)
 	if err != nil {
-		log.Fatal(err)
+		fmt.Printf("Status: 500 Internal Server Error\n\n")
+		fmt.Print("Could not find zipcode dataset")
+		return
 	}
 
 	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 	var zip Zipcode
-	json.Unmarshal([]byte(line), &zip)
+	if err := json.Unmarshal([]byte(line), &zip); err != nil {
+		fmt.Printf("Status: 400 Bad Request\n\n")
+		fmt.Printf("Could not parse json string %s \n", line)
+		return
+	}
 
 	foundedZipcode := zipcodeMap.DatasetList[zip.Zipcode]
-	if (foundedZipcode == ZipCodeLocation{}) {
-		fmt.Printf("zipcodes: zipcode %s not found !", zip.Zipcode)
+	if foundedZipcode.ZipCode != zip.Zipcode {
+		fmt.Printf("Status: 404 Not Found\n\n")
+		fmt.Printf("Could not find the zipcode %s.\n", zip.Zipcode)
+		return
 	}
 
 	json, err := json.Marshal(foundedZipcode)
@@ -73,8 +87,7 @@ func LoadGob(country_code string) (Zipcodes, error) {
 func MakeGob(country_code string, dataset Zipcodes) error {
 	file, err := os.Create(country_code + ".gob")
 	if err != nil {
-		fmt.Println("Could not find dateset file")
-		os.Exit(1)
+		return fmt.Errorf("zipcodes: error while creating file %v", err)
 	}
 	encoder := gob.NewEncoder(file)
 	encoder.Encode(dataset)
@@ -102,7 +115,6 @@ type Zipcodes struct {
 func LoadDataset(country_code string) (Zipcodes, error) {
 	file, err := os.Open(country_code + ".txt")
 	if err != nil {
-		log.Fatal(err)
 		return Zipcodes{}, fmt.Errorf("zipcodes: error while opening file %v", err)
 	}
 	defer file.Close()
